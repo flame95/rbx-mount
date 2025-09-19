@@ -20,7 +20,7 @@ local points = {
     ["CP 2"] = Vector3.new(-67.54, -76.75, 107.31),
     ["CP 3"] = Vector3.new(-65.13, -27.03, 232.51),
     ["CP 4"] = Vector3.new(312.75, 12.97, 374.00),
-    Summit = Vector3.new(-0.22, -175.01, -197.36),
+    Summit = Vector3.new(59.59, -235.03, 220.99),
 }
 
 -- setting teleport
