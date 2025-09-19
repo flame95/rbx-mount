@@ -18,9 +18,9 @@ end
 local function teleportTo(vec)
     local root = getRoot()
     if not root then return false end
-    root.CFrame = CFrame.new(vec + Vector3.new(0, 8, 0))
+    root.CFrame = CFrame.new(vec + Vector3.new(0, 5, 0))
     task.wait(0.25)
-    root.CFrame = root.CFrame * CFrame.new(0, 0, -1)
+    root.CFrame = root.CFrame * CFrame.new(0, 0, -3)
     return true
 end
 
@@ -86,7 +86,7 @@ local function climbRoute(mode)
     for _, pos in ipairs(route) do
         teleportTo(pos)
         print("[AutoGrind] Teleport ke checkpoint")
-        task.wait(3) -- Jeda 3 detik di setiap checkpoint
+        task.wait(10) -- Jeda 3 detik di setiap checkpoint
     end
     print("[AutoGrind] Rute selesai!")
 end
