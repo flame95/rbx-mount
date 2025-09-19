@@ -82,11 +82,15 @@ local function climbRoute(mode)
     local route = routes[mode]
     if not route then return end
     print("[AutoGrind] Memulai mode: " .. mode)
+    local delay = 10 -- Default delay untuk mode normal
+    if mode == "hardmode" then
+        delay = 30 -- Delay lebih besar untuk hardmode
+    end
 
     for _, pos in ipairs(route) do
         teleportTo(pos)
         print("[AutoGrind] Teleport ke checkpoint")
-        task.wait(10) -- Jeda 3 detik di setiap checkpoint
+        task.wait(delay)
     end
     print("[AutoGrind] Rute selesai!")
 end
