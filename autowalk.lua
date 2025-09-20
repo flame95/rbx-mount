@@ -2,8 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Re-engineered for server-friendly movement
-    with teleport to start position.
+    Versi Final: Gerakan Normal dengan Kamera Bebas
 --]]
 
 local Players = game:GetService("Players")
@@ -46,7 +45,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "SCRIPT AUTO WALK v2"
+titleLabel.Text = "PS SCRIPT AUTO WALK V2"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -274,13 +273,10 @@ local function addReplayItem(path, name)
 
                 if frameData.Type == "Jump" then
                     humanoid.Jump = true
-                    -- Wait for the jump to register before moving
                     task.wait(0.2) 
                 else
                     humanoid:MoveTo(frameData.Position)
-                    -- Wait for character to reach the point or a short timeout
                     local moved = humanoid.MoveToFinished:Wait(2)
-                    -- If character is stuck or MoveTo is too slow, we force a short wait to continue to the next point
                     if not moved then
                          task.wait(0.1)
                     end
