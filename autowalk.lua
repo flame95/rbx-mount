@@ -2,7 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Re-engineered for smooth movement and jumps.
+    Re-engineered for server-friendly movement.
 --]]
 
 local Players = game:GetService("Players")
@@ -16,6 +16,7 @@ local isRecording = false
 local currentRecordedPath = {}
 local savedReplays = {}
 local pathUpdateConnection = nil
+local lastRecordedPosition = nil
 
 -- Create the main ScreenGui
 local screenGui = Instance.new("ScreenGui")
@@ -248,43 +249,28 @@ local function addReplayItem(path, name)
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
-        local rootPart = character:FindFirstChild("HumanoidRootPart")
         
-        if not humanoid or not rootPart then
-            print("Failed to find Humanoid or HumanoidRootPart.")
+        if not humanoid then
+            print("Failed to find Humanoid.")
             return
         end
         
         local speed = tonumber(speedTextBox.Text) or 16
         humanoid.WalkSpeed = speed
-
-        local camera = workspace.CurrentCamera
-        local currentFrame = 1
-
-        -- Use a faster loop to process each recorded frame
-        local playConnection = RunService.Heartbeat:Connect(function(dt)
-            if currentFrame > #path then
-                playConnection:Disconnect()
-                humanoid.WalkSpeed = 16 -- Reset speed
-                print("Finished playing: " .. name)
-                return
-            end
-
-            local frameData = path[currentFrame]
-
-            -- Set character position and orientation
-            rootPart.CFrame = CFrame.new(frameData.Position) * CFrame.new(0, 0, 0) * frameData.Orientation
-
-            -- Set camera CFrame
-            camera.CFrame = CFrame.new(frameData.CameraPosition) * frameData.CameraOrientation
-
-            -- Handle jump
-            if frameData.IsJumping then
+        
+        -- Start playing the path
+        for i, frameData in ipairs(path) do
+            if frameData.Type == "Jump" then
                 humanoid.Jump = true
             end
-
-            currentFrame = currentFrame + 1
-        end)
+            
+            -- Move the character to the position
+            humanoid:MoveTo(frameData.Position)
+            humanoid.MoveToFinished:Wait()
+        end
+        
+        humanoid.WalkSpeed = 16
+        print("Finished playing: " .. name)
     end)
     
     replayItem:SetAttribute("Path", path)
@@ -301,43 +287,52 @@ recordButton.MouseButton1Click:Connect(function()
         currentRecordedPath = {}
         recordButton.Text = "Stop"
         
-        local lastPosition = nil
-        local lastCameraOrientation = nil
-        local lastJumpStatus = false
+        local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        
+        if not humanoid or not rootPart then
+            warn("Character is not ready.")
+            return
+        end
 
-        pathUpdateConnection = RunService.RenderStepped:Connect(function()
-            local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-            local rootPart = character:FindFirstChild("HumanoidRootPart")
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            local camera = workspace.CurrentCamera
+        -- Record the starting position
+        table.insert(currentRecordedPath, {
+            Type = "Move",
+            Position = rootPart.Position
+        })
+        lastRecordedPosition = rootPart.Position
 
-            if rootPart and humanoid and camera then
-                -- Check for significant changes to avoid redundant data
-                local currentPosition = rootPart.Position
-                local currentCameraOrientation = camera.CFrame.Rotation
-                local currentJumpStatus = humanoid.FloorMaterial == Enum.Material.Air and not humanoid.Sit
-                
-                -- Record only if there's a change or it's the first frame
-                if not lastPosition or (currentPosition - lastPosition).Magnitude > 0.01 or currentJumpStatus ~= lastJumpStatus or (currentCameraOrientation - lastCameraOrientation).Magnitude > 0.01 then
-                    table.insert(currentRecordedPath, {
-                        Position = currentPosition,
-                        Orientation = rootPart.CFrame.Rotation,
-                        IsJumping = currentJumpStatus,
-                        CameraPosition = camera.CFrame.Position,
-                        CameraOrientation = camera.CFrame.Rotation
-                    })
-                    lastPosition = currentPosition
-                    lastCameraOrientation = currentCameraOrientation
-                    lastJumpStatus = currentJumpStatus
-                end
+        -- Detect jump events
+        local jumpConnection = humanoid.StateChanged:Connect(function(oldState, newState)
+            if newState == Enum.HumanoidStateType.Jumping then
+                table.insert(currentRecordedPath, {
+                    Type = "Jump",
+                    Position = rootPart.Position
+                })
             end
         end)
+        
+        -- Record keyframes when position changes significantly
+        pathUpdateConnection = RunService.Heartbeat:Connect(function()
+            local currentPosition = rootPart.Position
+            -- Record a new point if character has moved more than 0.5 studs
+            if (currentPosition - lastRecordedPosition).Magnitude > 0.5 then
+                table.insert(currentRecordedPath, {
+                    Type = "Move",
+                    Position = currentPosition
+                })
+                lastRecordedPosition = currentPosition
+            end
+        end)
+
     else
         print("Recording stopped. Path saved temporarily.")
         if pathUpdateConnection then
             pathUpdateConnection:Disconnect()
             pathUpdateConnection = nil
         end
+        
         recordButton.Text = "Record"
     end
 end)
@@ -378,7 +373,7 @@ loadPathButton.MouseButton1Click:Connect(function()
             loadedPath = HttpService:JSONDecode(jsonString)
         end)
         
-        if success and type(loadedPath) == "table" and loadedPath[1] and type(loadedPath[1]) == "table" and loadedPath[1].Position then
+        if success and type(loadedPath) == "table" and loadedPath[1] and type(loadedPath[1]) == "table" then
             local replayCount = #savedReplays + 1
             local replayName = "Loaded Path " .. replayCount
             table.insert(savedReplays, {name = replayName, path = loadedPath})
