@@ -2,8 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Versi Final: Gerakan Normal dengan Kamera Bebas
-    dan Tombol Minimize
+    Versi Final: Gerakan Paling Mulus
 --]]
 
 local Players = game:GetService("Players")
@@ -17,9 +16,6 @@ local isRecording = false
 local currentRecordedPath = {}
 local savedReplays = {}
 local pathUpdateConnection = nil
-local lastRecordedPosition = nil
-local isPlaying = false
-local isMinimized = false
 
 -- Create the main ScreenGui
 local screenGui = Instance.new("ScreenGui")
@@ -47,7 +43,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "PS SCRIPT AUTO WALK b3"
+titleLabel.Text = "PS SCRIPT AUTO WALK c3"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -55,28 +51,6 @@ titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Parent = titleBar
-
--- Minimize button
-local minimizeButton = Instance.new("TextButton")
-minimizeButton.Name = "MinimizeButton"
-minimizeButton.Size = UDim2.new(0, 25, 1, 0)
-minimizeButton.Position = UDim2.new(1, -55, 0, 0)
-minimizeButton.Text = "—"
-minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-minimizeButton.Font = Enum.Font.SourceSansBold
-minimizeButton.TextSize = 18
-minimizeButton.Parent = titleBar
-
-minimizeButton.MouseButton1Click:Connect(function()
-    if isMinimized then
-        mainFrame.Visible = true
-        isMinimized = false
-    else
-        mainFrame.Visible = false
-        isMinimized = true
-    end
-end)
 
 -- Close button
 local closeButton = Instance.new("TextButton")
@@ -270,48 +244,39 @@ local function addReplayItem(path, name)
     playButton.Parent = replayItem
     
     playButton.MouseButton1Click:Connect(function()
-        if isPlaying then
-            print("Playback is already running.")
-            return
-        end
-        isPlaying = true
         print("Playing: " .. name)
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         
-        if not humanoid or not rootPart or #path == 0 then
-            print("Failed to find Humanoid/RootPart or path is empty.")
-            isPlaying = false
+        if not rootPart or #path == 0 then
+            print("Failed to find HumanoidRootPart or path is empty.")
             return
         end
         
         -- Teleport to the starting position
         rootPart.CFrame = CFrame.new(path[1].Position)
         
-        -- Start playing the path
-        task.spawn(function()
-            for i, frameData in ipairs(path) do
-                if not isPlaying then break end -- Stop playback if the flag is set to false
-
-                if frameData.Type == "Jump" then
-                    humanoid.Jump = true
-                    -- Wait for the jump to register before moving
-                    task.wait(0.2) 
-                else
-                    humanoid:MoveTo(frameData.Position)
-                    -- Wait for character to reach the point or a short timeout
-                    local moved = humanoid.MoveToFinished:Wait(2)
-                    -- If character is stuck or MoveTo is too slow, we force a short wait to continue to the next point
-                    if not moved then
-                         task.wait(0.1)
-                    end
-                end
+        local currentFrame = 1
+        local playConnection = nil
+        
+        playConnection = RunService.RenderStepped:Connect(function()
+            if currentFrame > #path then
+                playConnection:Disconnect()
+                print("Finished playing: " .. name)
+                return
             end
-            humanoid.WalkSpeed = 16
-            isPlaying = false
-            print("Finished playing: " .. name)
+            
+            local frameData = path[currentFrame]
+
+            -- Set character position and orientation directly
+            rootPart.CFrame = CFrame.new(frameData.Position) * frameData.Orientation
+
+            -- Set camera CFrame directly
+            local camera = workspace.CurrentCamera
+            camera.CFrame = CFrame.new(frameData.CameraPosition) * frameData.CameraOrientation
+
+            currentFrame = currentFrame + 1
         end)
     end)
     
@@ -323,11 +288,6 @@ end
 
 -- Record Button
 recordButton.MouseButton1Click:Connect(function()
-    if isPlaying then
-        print("Cannot record while a replay is playing.")
-        return
-    end
-
     isRecording = not isRecording
     if isRecording then
         print("Recording started...")
@@ -335,42 +295,22 @@ recordButton.MouseButton1Click:Connect(function()
         recordButton.Text = "Stop"
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
         local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local camera = workspace.CurrentCamera
         
-        if not humanoid or not rootPart then
-            warn("Character is not ready.")
-            isRecording = false
+        if not rootPart or not camera then
+            warn("Character or Camera is not ready.")
             return
         end
 
-        -- Record the starting position
-        table.insert(currentRecordedPath, {
-            Type = "Move",
-            Position = rootPart.Position
-        })
-        lastRecordedPosition = rootPart.Position
-
-        -- Detect jump events
-        local jumpConnection = humanoid.StateChanged:Connect(function(oldState, newState)
-            if newState == Enum.HumanoidStateType.Jumping then
-                table.insert(currentRecordedPath, {
-                    Type = "Jump"
-                })
-            end
-        end)
-        
-        -- Record keyframes when position changes significantly
-        pathUpdateConnection = RunService.Heartbeat:Connect(function()
-            local currentPosition = rootPart.Position
-            -- Record a new point if character has moved more than 1 stud
-            if (currentPosition - lastRecordedPosition).Magnitude > 1 then
-                table.insert(currentRecordedPath, {
-                    Type = "Move",
-                    Position = currentPosition
-                })
-                lastRecordedPosition = currentPosition
-            end
+        pathUpdateConnection = RunService.RenderStepped:Connect(function()
+            -- Record a new point every frame
+            table.insert(currentRecordedPath, {
+                Position = rootPart.Position,
+                Orientation = rootPart.CFrame.Rotation,
+                CameraPosition = camera.CFrame.Position,
+                CameraOrientation = camera.CFrame.Rotation
+            })
         end)
 
     else
