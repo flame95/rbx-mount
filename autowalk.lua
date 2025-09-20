@@ -2,7 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Versi Akhir: Gerakan Mulus (Smooth) dan Lompatan
+    Versi Final: Gerakan Paling Mulus
 --]]
 
 local Players = game:GetService("Players")
@@ -16,8 +16,6 @@ local isRecording = false
 local currentRecordedPath = {}
 local savedReplays = {}
 local pathUpdateConnection = nil
-local jumpConnection = nil
-local lastRecordedPosition = nil
 
 -- Create the main ScreenGui
 local screenGui = Instance.new("ScreenGui")
@@ -45,7 +43,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "SCRIPT AUTO WALK"
+titleLabel.Text = "PS SCRIPT AUTO WALK"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -271,16 +269,9 @@ local function addReplayItem(path, name)
             
             local frameData = path[currentFrame]
 
-            if frameData.Type == "Jump" then
-                local humanoid = character:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    humanoid.Jump = true
-                end
-            else
-                -- Set character position and orientation directly
-                rootPart.CFrame = CFrame.new(frameData.Position) * frameData.Orientation
-            end
-            
+            -- Set character position and orientation directly
+            rootPart.CFrame = CFrame.new(frameData.Position) * frameData.Orientation
+
             -- Set camera CFrame directly
             local camera = workspace.CurrentCamera
             camera.CFrame = CFrame.new(frameData.CameraPosition) * frameData.CameraOrientation
@@ -304,28 +295,17 @@ recordButton.MouseButton1Click:Connect(function()
         recordButton.Text = "Stop"
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         local camera = workspace.CurrentCamera
         
-        if not rootPart or not camera or not humanoid then
-            warn("Character, Humanoid, or Camera is not ready.")
+        if not rootPart or not camera then
+            warn("Character or Camera is not ready.")
             return
         end
-
-        -- Detect jump events and record them
-        jumpConnection = humanoid.StateChanged:Connect(function(oldState, newState)
-            if newState == Enum.HumanoidStateType.Jumping then
-                table.insert(currentRecordedPath, {
-                    Type = "Jump"
-                })
-            end
-        end)
 
         pathUpdateConnection = RunService.RenderStepped:Connect(function()
             -- Record a new point every frame
             table.insert(currentRecordedPath, {
-                Type = "Move",
                 Position = rootPart.Position,
                 Orientation = rootPart.CFrame.Rotation,
                 CameraPosition = camera.CFrame.Position,
@@ -338,10 +318,6 @@ recordButton.MouseButton1Click:Connect(function()
         if pathUpdateConnection then
             pathUpdateConnection:Disconnect()
             pathUpdateConnection = nil
-        end
-        if jumpConnection then
-            jumpConnection:Disconnect()
-            jumpConnection = nil
         end
         
         recordButton.Text = "Record"
