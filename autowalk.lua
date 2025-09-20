@@ -2,7 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Final Version: Smooth and Natural Movement
+    Versi Akhir: Gerakan Natural dan Deteksi Lompatan
 --]]
 
 local Players = game:GetService("Players")
@@ -16,6 +16,7 @@ local isRecording = false
 local currentRecordedPath = {}
 local savedReplays = {}
 local pathUpdateConnection = nil
+local jumpConnection = nil
 local lastRecordedPosition = nil
 
 -- Create the main ScreenGui
@@ -44,7 +45,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "SCRIPT AUTO WALK"
+titleLabel.Text = "SCRIPT AUTO WALK v2"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -258,29 +259,22 @@ local function addReplayItem(path, name)
         local speed = tonumber(speedTextBox.Text) or 16
         humanoid.WalkSpeed = speed
         
-        -- Use an in-game loop for smoother movement
-        local currentIndex = 1
-        local playConnection = nil
-        
-        playConnection = RunService.Heartbeat:Connect(function()
-            if currentIndex > #path then
-                playConnection:Disconnect()
-                humanoid.WalkSpeed = 16 -- Reset speed
-                print("Finished playing: " .. name)
-                return
-            end
-            
-            local frameData = path[currentIndex]
-            
-            if frameData.Type == "Jump" then
-                humanoid.Jump = true
-            end
+        task.spawn(function()
+            for i, frameData in ipairs(path) do
+                if frameData.Type == "Jump" then
+                    humanoid.Jump = true
+                    task.wait(0.2) -- Small wait after a jump action
+                end
+                
+                -- Move the character to the position and wait for it to finish
+                humanoid:MoveTo(frameData.Position)
+                humanoid.MoveToFinished:Wait()
 
-            -- Move to the recorded position
-            humanoid:MoveTo(frameData.Position)
+                task.wait(0.05) -- Small wait between points for natural look
+            end
             
-            -- Increment index to move to the next keypoint
-            currentIndex = currentIndex + 1
+            humanoid.WalkSpeed = 16
+            print("Finished playing: " .. name)
         end)
     end)
     
@@ -315,7 +309,7 @@ recordButton.MouseButton1Click:Connect(function()
         lastRecordedPosition = rootPart.Position
 
         -- Detect jump events
-        local jumpConnection = humanoid.StateChanged:Connect(function(oldState, newState)
+        jumpConnection = humanoid.StateChanged:Connect(function(oldState, newState)
             if newState == Enum.HumanoidStateType.Jumping then
                 table.insert(currentRecordedPath, {
                     Type = "Jump",
@@ -342,6 +336,10 @@ recordButton.MouseButton1Click:Connect(function()
         if pathUpdateConnection then
             pathUpdateConnection:Disconnect()
             pathUpdateConnection = nil
+        end
+        if jumpConnection then
+            jumpConnection:Disconnect()
+            jumpConnection = nil
         end
         
         recordButton.Text = "Record"
