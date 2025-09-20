@@ -2,7 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Re-engineered for server-friendly movement.
+    Final Version: Smooth and Natural Movement
 --]]
 
 local Players = game:GetService("Players")
@@ -44,7 +44,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "PS SCRIPT AUTO WALK"
+titleLabel.Text = "SCRIPT AUTO WALK"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -258,19 +258,30 @@ local function addReplayItem(path, name)
         local speed = tonumber(speedTextBox.Text) or 16
         humanoid.WalkSpeed = speed
         
-        -- Start playing the path
-        for i, frameData in ipairs(path) do
+        -- Use an in-game loop for smoother movement
+        local currentIndex = 1
+        local playConnection = nil
+        
+        playConnection = RunService.Heartbeat:Connect(function()
+            if currentIndex > #path then
+                playConnection:Disconnect()
+                humanoid.WalkSpeed = 16 -- Reset speed
+                print("Finished playing: " .. name)
+                return
+            end
+            
+            local frameData = path[currentIndex]
+            
             if frameData.Type == "Jump" then
                 humanoid.Jump = true
             end
-            
-            -- Move the character to the position
+
+            -- Move to the recorded position
             humanoid:MoveTo(frameData.Position)
-            humanoid.MoveToFinished:Wait()
-        end
-        
-        humanoid.WalkSpeed = 16
-        print("Finished playing: " .. name)
+            
+            -- Increment index to move to the next keypoint
+            currentIndex = currentIndex + 1
+        end)
     end)
     
     replayItem:SetAttribute("Path", path)
@@ -316,8 +327,8 @@ recordButton.MouseButton1Click:Connect(function()
         -- Record keyframes when position changes significantly
         pathUpdateConnection = RunService.Heartbeat:Connect(function()
             local currentPosition = rootPart.Position
-            -- Record a new point if character has moved more than 0.5 studs
-            if (currentPosition - lastRecordedPosition).Magnitude > 0.5 then
+            -- Record a new point if character has moved more than 1 stud
+            if (currentPosition - lastRecordedPosition).Magnitude > 1 then
                 table.insert(currentRecordedPath, {
                     Type = "Move",
                     Position = currentPosition
