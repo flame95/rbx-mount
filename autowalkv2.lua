@@ -3,16 +3,19 @@
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
     Versi Final: Gerakan Paling Mulus
+    Kamera bebas saat pemutaran ulang.
 --]]
 
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 -- Variables for recording and replay
 local isRecording = false
+local isPlaying = false
 local currentRecordedPath = {}
 local savedReplays = {}
 local pathUpdateConnection = nil
@@ -43,7 +46,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "PS SCRIPT AUTO WALK"
+titleLabel.Text = "PS SCRIPT AUTO WALKss"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -244,6 +247,11 @@ local function addReplayItem(path, name)
     playButton.Parent = replayItem
     
     playButton.MouseButton1Click:Connect(function()
+        if isPlaying then
+            print("Playback is already running.")
+            return
+        end
+        isPlaying = true
         print("Playing: " .. name)
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
@@ -251,32 +259,37 @@ local function addReplayItem(path, name)
         
         if not rootPart or #path == 0 then
             print("Failed to find HumanoidRootPart or path is empty.")
+            isPlaying = false
             return
         end
         
-        -- Teleport to the starting position
-        rootPart.CFrame = CFrame.new(path[1].Position)
+        local startCFrame = CFrame.new(path[1].Position) * path[1].Orientation
+        rootPart.CFrame = startCFrame
         
-        local currentFrame = 1
-        local playConnection = nil
-        
-        playConnection = RunService.RenderStepped:Connect(function()
-            if currentFrame > #path then
-                playConnection:Disconnect()
-                print("Finished playing: " .. name)
-                return
+        task.spawn(function()
+            local previousPoint = startCFrame
+            for i = 2, #path do
+                if not isPlaying then break end
+
+                local nextPoint = CFrame.new(path[i].Position) * path[i].Orientation
+                local distance = (nextPoint.Position - previousPoint.Position).Magnitude
+                
+                if distance > 0.01 then -- Only tween if there is actual movement
+                    local tweenInfo = TweenInfo.new(
+                        distance / tonumber(speedTextBox.Text), 
+                        Enum.EasingStyle.Linear,
+                        Enum.EasingDirection.Out
+                    )
+                    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = nextPoint})
+                    tween:Play()
+                    tween.Completed:Wait()
+                end
+                
+                previousPoint = nextPoint
             end
             
-            local frameData = path[currentFrame]
-
-            -- Set character position and orientation directly
-            rootPart.CFrame = CFrame.new(frameData.Position) * frameData.Orientation
-
-            -- Set camera CFrame directly
-            local camera = workspace.CurrentCamera
-            camera.CFrame = CFrame.new(frameData.CameraPosition) * frameData.CameraOrientation
-
-            currentFrame = currentFrame + 1
+            isPlaying = false
+            print("Finished playing: " .. name)
         end)
     end)
     
@@ -288,6 +301,11 @@ end
 
 -- Record Button
 recordButton.MouseButton1Click:Connect(function()
+    if isPlaying then
+        print("Cannot record while a replay is playing.")
+        return
+    end
+
     isRecording = not isRecording
     if isRecording then
         print("Recording started...")
@@ -296,10 +314,10 @@ recordButton.MouseButton1Click:Connect(function()
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
         local rootPart = character:FindFirstChild("HumanoidRootPart")
-        local camera = workspace.CurrentCamera
         
-        if not rootPart or not camera then
-            warn("Character or Camera is not ready.")
+        if not rootPart then
+            warn("Character is not ready.")
+            isRecording = false
             return
         end
 
@@ -308,8 +326,6 @@ recordButton.MouseButton1Click:Connect(function()
             table.insert(currentRecordedPath, {
                 Position = rootPart.Position,
                 Orientation = rootPart.CFrame.Rotation,
-                CameraPosition = camera.CFrame.Position,
-                CameraOrientation = camera.CFrame.Rotation
             })
         end)
 
@@ -352,6 +368,11 @@ end)
 
 -- Load Path Button (from clipboard)
 loadPathButton.MouseButton1Click:Connect(function()
+    if isRecording then
+        print("Cannot load a path while recording.")
+        return
+    end
+
     local jsonString = getclipboard()
     
     if jsonString and jsonString ~= "" then
