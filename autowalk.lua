@@ -2,14 +2,14 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Created for Roblox
-    Executable via Delta Executor
+    Re-engineered for smooth movement and jumps.
 --]]
 
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 -- Variables for recording and replay
 local isRecording = false
@@ -26,7 +26,7 @@ screenGui.Parent = localPlayer.PlayerGui
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 300, 0, 350)
-mainFrame.Position = UDim2.new(0.5, -150, 0.5, -175) -- Centered
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -175)
 mainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
@@ -66,7 +66,6 @@ closeButton.Parent = titleBar
 
 -- Draggable logic
 local dragging
-local dragInput
 local dragStart
 local startPosition
 titleBar.InputBegan:Connect(function(input)
@@ -82,7 +81,7 @@ titleBar.InputBegan:Connect(function(input)
     end
 end)
 
-game:GetService("UserInputService").InputChanged:Connect(function(input)
+UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
         local delta = input.Position - dragStart
         mainFrame.Position = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
@@ -187,7 +186,7 @@ local speedTextBox = Instance.new("TextBox")
 speedTextBox.Name = "SpeedTextBox"
 speedTextBox.Size = UDim2.new(0.7, 0, 1, 0)
 speedTextBox.Position = UDim2.new(0.3, 0, 0, 0)
-speedTextBox.Text = "16" -- Default speed
+speedTextBox.Text = "16"
 speedTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 speedTextBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 speedTextBox.Font = Enum.Font.SourceSansSemibold
@@ -258,25 +257,39 @@ local function addReplayItem(path, name)
         
         local speed = tonumber(speedTextBox.Text) or 16
         humanoid.WalkSpeed = speed
-        
-        for i, pos in ipairs(path) do
-            humanoid:MoveTo(pos)
-            humanoid.MoveToFinished:Wait()
-            -- Add a small wait to prevent stuttering
-            task.wait(0.05)
-        end
-        
-        humanoid.WalkSpeed = 16 -- Reset speed
-        print("Finished playing: " .. name)
+
+        local camera = workspace.CurrentCamera
+        local currentFrame = 1
+
+        -- Use a faster loop to process each recorded frame
+        local playConnection = RunService.Heartbeat:Connect(function(dt)
+            if currentFrame > #path then
+                playConnection:Disconnect()
+                humanoid.WalkSpeed = 16 -- Reset speed
+                print("Finished playing: " .. name)
+                return
+            end
+
+            local frameData = path[currentFrame]
+
+            -- Set character position and orientation
+            rootPart.CFrame = CFrame.new(frameData.Position) * CFrame.new(0, 0, 0) * frameData.Orientation
+
+            -- Set camera CFrame
+            camera.CFrame = CFrame.new(frameData.CameraPosition) * frameData.CameraOrientation
+
+            -- Handle jump
+            if frameData.IsJumping then
+                humanoid.Jump = true
+            end
+
+            currentFrame = currentFrame + 1
+        end)
     end)
     
-    -- Store the path in the item for easy access
     replayItem:SetAttribute("Path", path)
-
-    -- Update canvas size
     replayListFrame.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y)
 end
-
 
 -- Button functionality
 
@@ -288,12 +301,35 @@ recordButton.MouseButton1Click:Connect(function()
         currentRecordedPath = {}
         recordButton.Text = "Stop"
         
-        -- Start recording every 0.1 seconds
-        pathUpdateConnection = RunService.Heartbeat:Connect(function()
+        local lastPosition = nil
+        local lastCameraOrientation = nil
+        local lastJumpStatus = false
+
+        pathUpdateConnection = RunService.RenderStepped:Connect(function()
             local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
             local rootPart = character:FindFirstChild("HumanoidRootPart")
-            if rootPart then
-                table.insert(currentRecordedPath, rootPart.Position)
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local camera = workspace.CurrentCamera
+
+            if rootPart and humanoid and camera then
+                -- Check for significant changes to avoid redundant data
+                local currentPosition = rootPart.Position
+                local currentCameraOrientation = camera.CFrame.Rotation
+                local currentJumpStatus = humanoid.FloorMaterial == Enum.Material.Air and not humanoid.Sit
+                
+                -- Record only if there's a change or it's the first frame
+                if not lastPosition or (currentPosition - lastPosition).Magnitude > 0.01 or currentJumpStatus ~= lastJumpStatus or (currentCameraOrientation - lastCameraOrientation).Magnitude > 0.01 then
+                    table.insert(currentRecordedPath, {
+                        Position = currentPosition,
+                        Orientation = rootPart.CFrame.Rotation,
+                        IsJumping = currentJumpStatus,
+                        CameraPosition = camera.CFrame.Position,
+                        CameraOrientation = camera.CFrame.Rotation
+                    })
+                    lastPosition = currentPosition
+                    lastCameraOrientation = currentCameraOrientation
+                    lastJumpStatus = currentJumpStatus
+                end
             end
         end)
     else
@@ -323,10 +359,9 @@ saveReplayButton.MouseButton1Click:Connect(function()
         local replayName = "Replay " .. replayCount
         table.insert(savedReplays, {name = replayName, path = currentRecordedPath})
         
-        -- Add to UI list
         addReplayItem(currentRecordedPath, replayName)
 
-        currentRecordedPath = {} -- Clear the temporary path
+        currentRecordedPath = {}
     else
         print("No path to save. Please record a path first.")
     end
@@ -343,12 +378,11 @@ loadPathButton.MouseButton1Click:Connect(function()
             loadedPath = HttpService:JSONDecode(jsonString)
         end)
         
-        if success and type(loadedPath) == "table" then
+        if success and type(loadedPath) == "table" and loadedPath[1] and type(loadedPath[1]) == "table" and loadedPath[1].Position then
             local replayCount = #savedReplays + 1
             local replayName = "Loaded Path " .. replayCount
             table.insert(savedReplays, {name = replayName, path = loadedPath})
             
-            -- Add to UI list
             addReplayItem(loadedPath, replayName)
 
             print("Path loaded from clipboard!")
