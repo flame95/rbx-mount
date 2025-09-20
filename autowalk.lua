@@ -2,7 +2,7 @@
     ======================================
     ||         PS SCRIPT AUTO WALK      ||
     ======================================
-    Versi Akhir: Gerakan Natural dan Deteksi Lompatan
+    Versi Akhir: Gerakan Mulus (Smooth) dan Lompatan
 --]]
 
 local Players = game:GetService("Players")
@@ -45,7 +45,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Name = "Title"
 titleLabel.Size = UDim2.new(1, -60, 1, 0)
 titleLabel.Position = UDim2.new(0, 5, 0, 0)
-titleLabel.Text = "SCRIPT AUTO WALK v2"
+titleLabel.Text = "SCRIPT AUTO WALK"
 titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 titleLabel.Font = Enum.Font.SourceSans
 titleLabel.TextSize = 18
@@ -249,32 +249,43 @@ local function addReplayItem(path, name)
         print("Playing: " .. name)
         
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
         
-        if not humanoid then
-            print("Failed to find Humanoid.")
+        if not rootPart or #path == 0 then
+            print("Failed to find HumanoidRootPart or path is empty.")
             return
         end
         
-        local speed = tonumber(speedTextBox.Text) or 16
-        humanoid.WalkSpeed = speed
+        -- Teleport to the starting position
+        rootPart.CFrame = CFrame.new(path[1].Position)
         
-        task.spawn(function()
-            for i, frameData in ipairs(path) do
-                if frameData.Type == "Jump" then
-                    humanoid.Jump = true
-                    task.wait(0.2) -- Small wait after a jump action
-                end
-                
-                -- Move the character to the position and wait for it to finish
-                humanoid:MoveTo(frameData.Position)
-                humanoid.MoveToFinished:Wait()
-
-                task.wait(0.05) -- Small wait between points for natural look
+        local currentFrame = 1
+        local playConnection = nil
+        
+        playConnection = RunService.RenderStepped:Connect(function()
+            if currentFrame > #path then
+                playConnection:Disconnect()
+                print("Finished playing: " .. name)
+                return
             end
             
-            humanoid.WalkSpeed = 16
-            print("Finished playing: " .. name)
+            local frameData = path[currentFrame]
+
+            if frameData.Type == "Jump" then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.Jump = true
+                end
+            else
+                -- Set character position and orientation directly
+                rootPart.CFrame = CFrame.new(frameData.Position) * frameData.Orientation
+            end
+            
+            -- Set camera CFrame directly
+            local camera = workspace.CurrentCamera
+            camera.CFrame = CFrame.new(frameData.CameraPosition) * frameData.CameraOrientation
+
+            currentFrame = currentFrame + 1
         end)
     end)
     
@@ -295,40 +306,31 @@ recordButton.MouseButton1Click:Connect(function()
         local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local camera = workspace.CurrentCamera
         
-        if not humanoid or not rootPart then
-            warn("Character is not ready.")
+        if not rootPart or not camera or not humanoid then
+            warn("Character, Humanoid, or Camera is not ready.")
             return
         end
 
-        -- Record the starting position
-        table.insert(currentRecordedPath, {
-            Type = "Move",
-            Position = rootPart.Position
-        })
-        lastRecordedPosition = rootPart.Position
-
-        -- Detect jump events
+        -- Detect jump events and record them
         jumpConnection = humanoid.StateChanged:Connect(function(oldState, newState)
             if newState == Enum.HumanoidStateType.Jumping then
                 table.insert(currentRecordedPath, {
-                    Type = "Jump",
-                    Position = rootPart.Position
+                    Type = "Jump"
                 })
             end
         end)
-        
-        -- Record keyframes when position changes significantly
-        pathUpdateConnection = RunService.Heartbeat:Connect(function()
-            local currentPosition = rootPart.Position
-            -- Record a new point if character has moved more than 1 stud
-            if (currentPosition - lastRecordedPosition).Magnitude > 1 then
-                table.insert(currentRecordedPath, {
-                    Type = "Move",
-                    Position = currentPosition
-                })
-                lastRecordedPosition = currentPosition
-            end
+
+        pathUpdateConnection = RunService.RenderStepped:Connect(function()
+            -- Record a new point every frame
+            table.insert(currentRecordedPath, {
+                Type = "Move",
+                Position = rootPart.Position,
+                Orientation = rootPart.CFrame.Rotation,
+                CameraPosition = camera.CFrame.Position,
+                CameraOrientation = camera.CFrame.Rotation
+            })
         end)
 
     else
